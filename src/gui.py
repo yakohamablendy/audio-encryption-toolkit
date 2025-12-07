@@ -1,374 +1,296 @@
-
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk, scrolledtext
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+                             QPushButton, QLabel, QLineEdit, QTextEdit, 
+                             QFileDialog, QMessageBox, QProgressBar, QGroupBox)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QFont
 import os
-import threading
 
-class Application:
-
+class WorkerThread(QThread):
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
     
-    def __init__(self, master, audio_converter, encryptor):
+    def __init__(self, func, *args):
+        super().__init__()
+        self.func = func
+        self.args = args
+    
+    def run(self):
+        try:
+            result = self.func(*self.args)
+            self.finished.emit(result)
+        except Exception as e:
+            self.error.emit(str(e))
 
-        self.master = master
+class Application(QMainWindow):
+    
+    def __init__(self, audio_converter, encryptor):
+        super().__init__()
         self.audio_converter = audio_converter
         self.encryptor = encryptor
-        
-        # Configuración de la ventana principal
-        self.master.title("Conversor de Audio a Texto con Criptografía")
-        self.master.geometry("800x750")
-        self.master.resizable(False, False)
-        
-      
         self.ruta_archivo = ""
         
+        self.setWindowTitle("Conversor de Audio a Texto con Criptografia")
+        self.setGeometry(100, 100, 1000, 800)
         
-        self._crear_interfaz()
+        self.crear_interfaz()
+        
+    def crear_interfaz(self):
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        main_layout = QVBoxLayout()
+        central_widget.setLayout(main_layout)
+        
+        titulo = QLabel("Conversor de Audio a Texto con Criptografia")
+        titulo.setAlignment(Qt.AlignCenter)
+        titulo.setFont(QFont("Arial", 18, QFont.Bold))
+        titulo.setStyleSheet("background-color: #1237db; color: white; padding: 20px;")
+        main_layout.addWidget(titulo)
+        
+        grupo_archivo = QGroupBox("ARCHIVO DE AUDIO")
+        grupo_archivo.setFont(QFont("Arial", 11, QFont.Bold))
+        layout_archivo = QVBoxLayout()
+        
+        layout_ruta = QHBoxLayout()
+        
+        label_ruta = QLabel("Ruta:")
+        self.entry_ruta = QLineEdit()
+        self.entry_ruta.setReadOnly(True)
+        self.entry_ruta.setMinimumHeight(30)
+        
+        self.btn_buscar = QPushButton("Buscar Archivo")
+        self.btn_buscar.setMinimumHeight(30)
+        self.btn_buscar.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 5px 15px;")
+        self.btn_buscar.clicked.connect(self.buscar_archivo)
+        
+        layout_ruta.addWidget(label_ruta)
+        layout_ruta.addWidget(self.entry_ruta)
+        layout_ruta.addWidget(self.btn_buscar)
+        
+        self.label_info_archivo = QLabel("No hay archivo seleccionado")
+        self.label_info_archivo.setStyleSheet("color: gray;")
+        
+        layout_archivo.addLayout(layout_ruta)
+        layout_archivo.addWidget(self.label_info_archivo)
+        grupo_archivo.setLayout(layout_archivo)
+        main_layout.addWidget(grupo_archivo)
+        
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        main_layout.addWidget(self.progress_bar)
+        
+        grupo_texto = QGroupBox("TEXTO CONVERTIDO")
+        grupo_texto.setFont(QFont("Arial", 11, QFont.Bold))
+        layout_texto = QVBoxLayout()
+        
+        self.texto_convertido = QTextEdit()
+        self.texto_convertido.setMinimumHeight(100)
+        layout_texto.addWidget(self.texto_convertido)
+        
+        self.btn_convertir = QPushButton("Convertir a Texto")
+        self.btn_convertir.setMinimumHeight(40)
+        self.btn_convertir.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
+        self.btn_convertir.clicked.connect(self.convertir_a_texto)
+        layout_texto.addWidget(self.btn_convertir)
+        
+        grupo_texto.setLayout(layout_texto)
+        main_layout.addWidget(grupo_texto)
+        
+        grupo_codigo = QGroupBox("REPRESENTACION EN CODIGO MAQUINA")
+        grupo_codigo.setFont(QFont("Arial", 11, QFont.Bold))
+        layout_codigo = QVBoxLayout()
+        
+        self.texto_hexadecimal = QTextEdit()
+        self.texto_hexadecimal.setMinimumHeight(100)
+        self.texto_hexadecimal.setStyleSheet("background-color: #f5f5f5; font-family: Courier;")
+        layout_codigo.addWidget(self.texto_hexadecimal)
+        
+        grupo_codigo.setLayout(layout_codigo)
+        main_layout.addWidget(grupo_codigo)
+        
+        grupo_encriptado = QGroupBox("TEXTO ENCRIPTADO")
+        grupo_encriptado.setFont(QFont("Arial", 11, QFont.Bold))
+        layout_encriptado = QVBoxLayout()
+        
+        self.texto_encriptado = QTextEdit()
+        self.texto_encriptado.setMinimumHeight(100)
+        layout_encriptado.addWidget(self.texto_encriptado)
+        
+        layout_botones = QHBoxLayout()
+        
+        self.btn_encriptar = QPushButton("Encriptar Texto")
+        self.btn_encriptar.setMinimumHeight(35)
+        self.btn_encriptar.setStyleSheet("background-color: #FF9800; color: white; font-weight: bold;")
+        self.btn_encriptar.clicked.connect(self.encriptar_texto)
+        
+        self.btn_desencriptar = QPushButton("Desencriptar")
+        self.btn_desencriptar.setMinimumHeight(35)
+        self.btn_desencriptar.setStyleSheet("background-color: #9C27B0; color: white; font-weight: bold;")
+        self.btn_desencriptar.clicked.connect(self.desencriptar_texto)
+        
+        self.btn_limpiar = QPushButton("Limpiar")
+        self.btn_limpiar.setMinimumHeight(35)
+        self.btn_limpiar.setStyleSheet("background-color: #F44336; color: white; font-weight: bold;")
+        self.btn_limpiar.clicked.connect(self.limpiar_todo)
+        
+        layout_botones.addWidget(self.btn_encriptar)
+        layout_botones.addWidget(self.btn_desencriptar)
+        layout_botones.addWidget(self.btn_limpiar)
+        
+        layout_encriptado.addLayout(layout_botones)
+        grupo_encriptado.setLayout(layout_encriptado)
+        main_layout.addWidget(grupo_encriptado)
+        
+        self.label_estado = QLabel("Estado: Listo")
+        self.label_estado.setStyleSheet("background-color: #E0E0E0; padding: 8px;")
+        main_layout.addWidget(self.label_estado)
     
-    def _crear_interfaz(self):
-       
-    
-        titulo = tk.Label(
-            self.master,
-            text="Conversor de Audio a Texto con Criptografía",
-            font=("Arial", 16, "bold"),
-            bg="#1237db",
-            fg="white",
-            pady=15
-        )
-        titulo.pack(fill=tk.X)
+    def buscar_archivo(self):
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 0)
+        self.actualizar_estado("Cargando archivo...")
         
-        frame_archivo = tk.LabelFrame(
-            self.master,
-            text=" ARCHIVO DE AUDIO",
-            font=("Arial", 12, "bold"),
-            padx=10,
-            pady=10
-        )
-        frame_archivo.pack(fill=tk.X, padx=20, pady=10)
-        
-        # Frame para la ruta y el botón
-        frame_ruta = tk.Frame(frame_archivo)
-        frame_ruta.pack(fill=tk.X, pady=5)
-        
-        # Label para mostrar la ruta
-        tk.Label(frame_ruta, text="Ruta:", font=("Arial", 10)).pack(side=tk.LEFT)
-        
-        # Entry para mostrar la ruta del archivo
-        self.entry_ruta = tk.Entry(frame_ruta, width=50, font=("Arial", 10))
-        self.entry_ruta.pack(side=tk.LEFT, padx=5)
-        
-        # Botón para buscar archivo
-        self.btn_buscar = tk.Button(
-            frame_ruta,
-            text="Buscar Archivo",
-            command=self._buscar_archivo_thread,
-            bg="#4CAF50",
-            fg="white",
-            font=("Arial", 10, "bold"),
-            cursor="hand2"
-        )
-        self.btn_buscar.pack(side=tk.LEFT, padx=5)
-        
-        # Label para mostrar información del archivo
-        self.label_info_archivo = tk.Label(
-            frame_archivo,
-            text="No hay archivo seleccionado",
-            font=("Arial", 9),
-            fg="gray"
-        )
-        self.label_info_archivo.pack(pady=5)
-        
-    
-        self.progress_frame = tk.Frame(self.master)
-        self.progress_frame.pack(fill=tk.X, padx=20, pady=5)
-        
-        self.progress_bar = ttk.Progressbar(
-            self.progress_frame,
-            mode='indeterminate',
-            length=760
+        ruta, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar archivo de audio",
+            "",
+            "Archivos de Audio (*.mp3 *.wav *.ogg *.flac *.m4a);;Todos los archivos (*.*)"
         )
         
-        self.progress_label = tk.Label(
-            self.progress_frame,
-            text="",
-            font=("Arial", 9, "italic"),
-            fg="#66ea7c"
-        )
-        
-        
-        frame_texto = tk.LabelFrame(
-            self.master,
-            text="📝 TEXTO CONVERTIDO",
-            font=("Arial", 12, "bold"),
-            padx=10,
-            pady=10
-        )
-        frame_texto.pack(fill=tk.BOTH, padx=20, pady=10, expand=True)
-        
-        # Área de texto con scroll para mostrar el texto convertido
-        self.texto_convertido = scrolledtext.ScrolledText(
-            frame_texto,
-            height=6,
-            font=("Arial", 10),
-            wrap=tk.WORD
-        )
-        self.texto_convertido.pack(fill=tk.BOTH, expand=True, pady=5)
-        
-        # Botón para convertir a texto
-        self.btn_convertir = tk.Button(
-            frame_texto,
-            text=" Convertir a Texto",
-            command=self._convertir_a_texto_thread,
-            bg="#2196F3",
-            fg="white",
-            font=("Arial", 11, "bold"),
-            cursor="hand2",
-            pady=10
-        )
-        self.btn_convertir.pack(pady=5)
-        
-        # ===== SECCIÓN DE TEXTO ENCRIPTADO =====
-        frame_encriptado = tk.LabelFrame(
-            self.master,
-            text="TEXTO ENCRIPTADO",
-            font=("Arial", 12, "bold"),
-            padx=10,
-            pady=10
-        )
-        frame_encriptado.pack(fill=tk.BOTH, padx=20, pady=10, expand=True)
-        
-        # Área de texto con scroll para mostrar el texto encriptado
-        self.texto_encriptado = scrolledtext.ScrolledText(
-            frame_encriptado,
-            height=6,
-            font=("Arial", 10),
-            wrap=tk.WORD
-        )
-        self.texto_encriptado.pack(fill=tk.BOTH, expand=True, pady=5)
-        
-        # Frame para los botones de encriptación
-        frame_botones_encriptar = tk.Frame(frame_encriptado)
-        frame_botones_encriptar.pack(pady=5)
-        
-        # Botón para encriptar
-        self.btn_encriptar = tk.Button(
-            frame_botones_encriptar,
-            text="Encriptar Texto",
-            command=self._encriptar_texto,
-            bg="#FF9800",
-            fg="white",
-            font=("Arial", 11, "bold"),
-            cursor="hand2",
-            padx=15
-        )
-        self.btn_encriptar.pack(side=tk.LEFT, padx=5)
-        
-        # Botón para desencriptar
-        self.btn_desencriptar = tk.Button(
-            frame_botones_encriptar,
-            text=" Desencriptar",
-            command=self._desencriptar_texto,
-            bg="#9C27B0",
-            fg="white",
-            font=("Arial", 11, "bold"),
-            cursor="hand2",
-            padx=15
-        )
-        self.btn_desencriptar.pack(side=tk.LEFT, padx=5)
-        
-        # Botón para limpiar
-        self.btn_limpiar = tk.Button(
-            frame_botones_encriptar,
-            text=" Limpiar",
-            command=self._limpiar_todo,
-            bg="#F44336",
-            fg="white",
-            font=("Arial", 11, "bold"),
-            cursor="hand2",
-            padx=15
-        )
-        self.btn_limpiar.pack(side=tk.LEFT, padx=5)
-        
-        # ===== BARRA DE ESTADO =====
-        self.label_estado = tk.Label(
-            self.master,
-            text="Estado: Listo",
-            font=("Arial", 9),
-            bg="#E0E0E0",
-            anchor=tk.W,
-            padx=10,
-            pady=5
-        )
-        self.label_estado.pack(fill=tk.X, side=tk.BOTTOM)
-    
-    def _mostrar_progreso(self, mensaje):
-        
-        self.progress_label.config(text=mensaje)
-        self.progress_label.pack(pady=2)
-        self.progress_bar.pack(fill=tk.X, pady=5)
-        self.progress_bar.start(10)
-    
-    def _ocultar_progreso(self):
-
-        self.progress_bar.stop()
-        self.progress_bar.pack_forget()
-        self.progress_label.pack_forget()
-    
-    def _deshabilitar_botones(self):
-        """
-        Deshabilita todos los botones durante el procesamiento.
-        """
-        self.btn_buscar.config(state=tk.DISABLED)
-        self.btn_convertir.config(state=tk.DISABLED)
-        self.btn_encriptar.config(state=tk.DISABLED)
-        self.btn_desencriptar.config(state=tk.DISABLED)
-        self.btn_limpiar.config(state=tk.DISABLED)
-    
-    def _habilitar_botones(self):
-        """
-        Habilita todos los botones después del procesamiento.
-        """
-        self.btn_buscar.config(state=tk.NORMAL)
-        self.btn_convertir.config(state=tk.NORMAL)
-        self.btn_encriptar.config(state=tk.NORMAL)
-        self.btn_desencriptar.config(state=tk.NORMAL)
-        self.btn_limpiar.config(state=tk.NORMAL)
-    
-    def _buscar_archivo_thread(self):
-        """
-        Inicia un hilo para buscar y cargar el archivo sin congelar la interfaz.
-        """
-        thread = threading.Thread(target=self._buscar_archivo)
-        thread.daemon = True
-        thread.start()
-    
-    def _buscar_archivo(self):
-       
-        # Deshabilita botones durante el procesamiento
-        self.master.after(0, self._deshabilitar_botones)
-        self.master.after(0, lambda: self._actualizar_estado("Cargando archivo..."))
-        self.master.after(0, lambda: self._mostrar_progreso(" Procesando archivo..."))
-        
-        # Abre el diálogo de selección de archivo
-        ruta = filedialog.askopenfilename(
-            title="Seleccionar archivo de audio",
-            filetypes=[
-                ("Archivos de Audio", "*.mp3 *.wav *.ogg *.flac *.m4a"),
-                ("Todos los archivos", "*.*")
-            ]
-        )
-        
-        # Si se seleccionó un archivo
         if ruta:
-            # Valida el formato del archivo
             if self.audio_converter.validar_formato_audio(ruta):
                 self.ruta_archivo = ruta
-                self.master.after(0, lambda: self.entry_ruta.delete(0, tk.END))
-                self.master.after(0, lambda: self.entry_ruta.insert(0, ruta))
+                self.entry_ruta.setText(ruta)
                 
-                # Obtiene información del archivo
                 nombre_archivo = os.path.basename(ruta)
                 extension = os.path.splitext(ruta)[1]
                 duracion = self.audio_converter.obtener_duracion_audio(ruta)
                 
-                # Actualiza la información del archivo
-                info = f"Archivo: {nombre_archivo} | Formato: {extension} | Duración: {duracion:.2f}s"
-                self.master.after(0, lambda: self.label_info_archivo.config(text=info, fg="green"))
-                self.master.after(0, lambda: self._actualizar_estado("Archivo cargado correctamente"))
+                info = f"Archivo: {nombre_archivo} | Formato: {extension} | Duracion: {duracion:.2f}s"
+                self.label_info_archivo.setText(info)
+                self.label_info_archivo.setStyleSheet("color: green;")
+                self.actualizar_estado("Archivo cargado correctamente")
             else:
-                self.master.after(0, lambda: messagebox.showerror(
-                    "Formato no válido",
-                    "El formato del archivo no es compatible.\nFormatos soportados: MP3, WAV, OGG, FLAC, M4A"
-                ))
+                QMessageBox.critical(self, "Formato no valido", 
+                                   "El formato del archivo no es compatible.\nFormatos soportados: MP3, WAV, OGG, FLAC, M4A")
         
-        # Oculta progreso y habilita botones
-        self.master.after(0, self._ocultar_progreso)
-        self.master.after(0, self._habilitar_botones)
+        self.progress_bar.setVisible(False)
     
-    def _convertir_a_texto_thread(self):
-       
-        thread = threading.Thread(target=self._convertir_a_texto)
-        thread.daemon = True
-        thread.start()
-    
-    def _convertir_a_texto(self):
-        
-        # Verifica que haya un archivo seleccionado
+    def convertir_a_texto(self):
         if not self.ruta_archivo:
-            self.master.after(0, lambda: messagebox.showwarning("Sin archivo", "Por favor, seleccione un archivo de audio primero."))
+            QMessageBox.warning(self, "Sin archivo", "Por favor, seleccione un archivo de audio primero.")
             return
         
-        # Deshabilita botones durante el procesamiento
-        self.master.after(0, self._deshabilitar_botones)
-        self.master.after(0, lambda: self._actualizar_estado("Convirtiendo audio a texto.."))
-        self.master.after(0, lambda: self._mostrar_progreso(" Procesando audio... Por favor espere, esto puede tomar un momento."))
+        self.deshabilitar_botones()
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 0)
+        self.actualizar_estado("Convirtiendo audio a texto...")
         
-        # Convierte el audio a texto
-        texto = self.audio_converter.convertir_audio_a_texto(self.ruta_archivo)
-        
-        # Muestra el texto en el área de texto convertido
-        self.master.after(0, lambda: self.texto_convertido.delete(1.0, tk.END))
-        self.master.after(0, lambda: self.texto_convertido.insert(1.0, texto))
-        
-        # Oculta progreso, actualiza estado y habilita botones
-        self.master.after(0, self._ocultar_progreso)
-        self.master.after(0, lambda: self._actualizar_estado("Conversión completada"))
-        self.master.after(0, self._habilitar_botones)
+        self.worker = WorkerThread(self.audio_converter.convertir_audio_a_texto, self.ruta_archivo)
+        self.worker.finished.connect(self.mostrar_texto_convertido)
+        self.worker.error.connect(self.mostrar_error)
+        self.worker.start()
     
-    def _encriptar_texto(self):
+    def mostrar_texto_convertido(self, texto):
+        self.texto_convertido.setText(texto)
         
-        # Obtiene el texto del área de texto convertido
-        texto = self.texto_convertido.get(1.0, tk.END).strip()
+        texto_bytes = texto.encode('utf-8')
+        texto_hex = ' '.join([f'{byte:02X}' for byte in texto_bytes])
         
-        # Verifica que haya texto para encriptar
+        mensaje_hex = f"Total de bytes: {len(texto_bytes)}\n"
+        mensaje_hex += f"Codificacion: UTF-8\n\n"
+        mensaje_hex += f"Representacion Hexadecimal:\n{texto_hex}\n\n"
+        mensaje_hex += f"Representacion Binaria (primeros 50 bytes):\n"
+        
+        for i, byte in enumerate(texto_bytes[:50]):
+            mensaje_hex += f'{byte:08b} '
+            if (i + 1) % 8 == 0:
+                mensaje_hex += '\n'
+        
+        if len(texto_bytes) > 50:
+            mensaje_hex += f"\n... ({len(texto_bytes) - 50} bytes adicionales)"
+        
+        self.texto_hexadecimal.setText(mensaje_hex)
+        
+        self.progress_bar.setVisible(False)
+        self.actualizar_estado("Conversion completada")
+        self.habilitar_botones()
+    
+    def mostrar_error(self, error):
+        QMessageBox.critical(self, "Error", f"Error al procesar el audio: {error}")
+        self.progress_bar.setVisible(False)
+        self.habilitar_botones()
+    
+    def encriptar_texto(self):
+        texto = self.texto_convertido.toPlainText().strip()
+        
         if not texto:
-            messagebox.showwarning("Sin texto", "No hay texto para encriptar.")
+            QMessageBox.warning(self, "Sin texto", "No hay texto para encriptar.")
             return
         
-        # Encripta el texto
         texto_encriptado = self.encryptor.encriptar_texto(texto)
+        self.texto_encriptado.setText(texto_encriptado)
         
-        # Muestra el texto encriptado
-        self.texto_encriptado.delete(1.0, tk.END)
-        self.texto_encriptado.insert(1.0, texto_encriptado)
+        self.texto_convertido.clear()
+        self.texto_hexadecimal.clear()
         
-        # Actualiza el estado
-        self._actualizar_estado("Texto encriptado correctamente")
+        self.actualizar_estado("Texto encriptado correctamente")
     
-    def _desencriptar_texto(self):
-       
-        # Obtiene el texto encriptado
-        texto_encriptado = self.texto_encriptado.get(1.0, tk.END).strip()
+    def desencriptar_texto(self):
+        texto_encriptado = self.texto_encriptado.toPlainText().strip()
         
-        # Verifica que haya texto para desencriptar
         if not texto_encriptado:
-            messagebox.showwarning("Sin texto", "No hay texto encriptado para desencriptar.")
+            QMessageBox.warning(self, "Sin texto", "No hay texto encriptado para desencriptar.")
             return
         
-        # Desencripta el texto
         texto_desencriptado = self.encryptor.desencriptar_texto(texto_encriptado)
+        self.texto_convertido.setText(texto_desencriptado)
         
-        # Muestra el texto desencriptado
-        self.texto_convertido.delete(1.0, tk.END)
-        self.texto_convertido.insert(1.0, texto_desencriptado)
+        texto_bytes = texto_desencriptado.encode('utf-8')
+        texto_hex = ' '.join([f'{byte:02X}' for byte in texto_bytes])
         
-        # Actualiza el estado
-        self._actualizar_estado("Texto desencriptado correctamente")
+        mensaje_hex = f"Total de bytes: {len(texto_bytes)}\n"
+        mensaje_hex += f"Codificacion: UTF-8\n\n"
+        mensaje_hex += f"Representacion Hexadecimal:\n{texto_hex}\n\n"
+        mensaje_hex += f"Representacion Binaria (primeros 50 bytes):\n"
+        
+        for i, byte in enumerate(texto_bytes[:50]):
+            mensaje_hex += f'{byte:08b} '
+            if (i + 1) % 8 == 0:
+                mensaje_hex += '\n'
+        
+        if len(texto_bytes) > 50:
+            mensaje_hex += f"\n... ({len(texto_bytes) - 50} bytes adicionales)"
+        
+        self.texto_hexadecimal.setText(mensaje_hex)
+        
+        self.texto_encriptado.clear()
+        
+        self.actualizar_estado("Texto desencriptado correctamente")
     
-    def _limpiar_todo(self):
-        
-        # Limpia los campos de texto
-        self.texto_convertido.delete(1.0, tk.END)
-        self.texto_encriptado.delete(1.0, tk.END)
-        self.entry_ruta.delete(0, tk.END)
-        
-        # Resetea las variables
+    def limpiar_todo(self):
+        self.texto_convertido.clear()
+        self.texto_hexadecimal.clear()
+        self.texto_encriptado.clear()
+        self.entry_ruta.clear()
         self.ruta_archivo = ""
-        self.label_info_archivo.config(text="No hay archivo seleccionado", fg="gray")
-        
-        # Actualiza el estado
-        self._actualizar_estado("Interfaz limpiada")
+        self.label_info_archivo.setText("No hay archivo seleccionado")
+        self.label_info_archivo.setStyleSheet("color: gray;")
+        self.actualizar_estado("Interfaz limpiada")
     
-    def _actualizar_estado(self, mensaje):
-       
-        self.label_estado.config(text=f"Estado: {mensaje}")
+    def deshabilitar_botones(self):
+        self.btn_buscar.setEnabled(False)
+        self.btn_convertir.setEnabled(False)
+        self.btn_encriptar.setEnabled(False)
+        self.btn_desencriptar.setEnabled(False)
+        self.btn_limpiar.setEnabled(False)
+    
+    def habilitar_botones(self):
+        self.btn_buscar.setEnabled(True)
+        self.btn_convertir.setEnabled(True)
+        self.btn_encriptar.setEnabled(True)
+        self.btn_desencriptar.setEnabled(True)
+        self.btn_limpiar.setEnabled(True)
+    
+    def actualizar_estado(self, mensaje):
+        self.label_estado.setText(f"Estado: {mensaje}")
